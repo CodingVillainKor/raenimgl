@@ -108,11 +108,16 @@ class Scene2D(Scene, RaenimScene):
 
 
 class Scene3D(ThreeDScene, RaenimScene):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.frame.reorient(0,0,0,0)
+        
+
     def construct(self):
         pass
 
     def tilt_camera_horizontal(self, degree, zoom=1.0):
-        self.frame.reorient(-90 - 90, degree, -90)
+        self.frame.rotate(degree * DEG, axis=UP)
         if zoom != 1.0:
             self.frame.set_height(self.frame.get_height() / zoom)
 
@@ -122,14 +127,12 @@ class Scene3D(ThreeDScene, RaenimScene):
             self.frame.set_height(self.frame.get_height() / zoom)
 
     def move_camera_horizontally(self, degree, zoom=1.0, added_anims=[], wait=1.0):
-        anims = [self.frame.animate.reorient(-90 - 90, degree, -90)] + added_anims
-        self.play(*anims)
-        self.wait(wait)
+        anims = [self.frame.animate.rotate(DEGREES * degree, axis=UP)] + added_anims
+        self.playw(*anims, wait=wait)
 
     def move_camera_vertically(self, degree, zoom=1.0, added_anims=[], wait=1.0):
-        anims = [self.frame.animate.reorient(None, degree)] + added_anims
-        self.play(*anims)
-        self.wait(wait)
+        anims = [self.frame.animate.reorient(None, degree, None, None)] + added_anims
+        self.playw(*anims, wait=wait)
 
     def set_camera(self, theta=None, phi=None, gamma=None, zoom=1.0):
         self.frame.reorient(theta, phi, gamma)
