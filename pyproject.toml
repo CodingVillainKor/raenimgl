@@ -1,0 +1,15 @@
+[project]
+name = "raenimgl"
+version = "0.1.0"
+description = "Imcommit's custom manimgl library"
+requires-python = ">=3.10"
+dependencies = [
+    "manimgl>=1.7.2",
+    "setuptools<71",
+    "addict>=2.4.0",
+    "opencv-python>=4.10.0",
+    "perlin-noise>=1.12",
+]
+
+[tool.setuptools]
+packages = ["raenimgl"]
