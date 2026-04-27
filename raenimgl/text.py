@@ -74,8 +74,11 @@ class TexBox(VGroup):
 class Words(Text):
     def __init__(self, text:str, **kwargs):
         super().__init__(text, **kwargs)
-        words_idx = self._build_spans(text)
-        self.words = VGroup(*[self[i:j] for i, j in words_idx])
+        self._word_spans = self._build_spans(text)
+
+    @property
+    def words(self) -> VGroup:
+        return VGroup(*[self[i:j] for i, j in self._word_spans])
 
     @staticmethod
     def _build_spans(s: str) -> list[tuple[int, int]]:
