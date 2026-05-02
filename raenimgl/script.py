@@ -4,14 +4,14 @@ import ast
 import sys
 
 # manimgl v1.7.2 bug workarounds
-if not hasattr(Code, 'validate_markup_string'):
+if not hasattr(Code, "validate_markup_string"):
     Code.validate_markup_string = lambda self, text: None
 
 from manimlib.mobject.svg.string_mobject import StringMobject
 from manimlib.mobject.svg.svg_mobject import SVGMobject
 
 # manimgl v1.7.2 bug: StringMobject references missing methods
-if not hasattr(StringMobject, 'get_file_path_by_content'):
+if not hasattr(StringMobject, "get_file_path_by_content"):
     # Patch mobjects_from_svg_string to avoid calling missing methods entirely
     def _patched_mobjects_from_svg_string(self, svg_string):
         submobs = SVGMobject.mobjects_from_svg_string(self, svg_string)
@@ -41,6 +41,7 @@ __all__ = ["PythonCode"]
 
 class ExecutionTracer:
     """Trace Python code execution line by line"""
+
     def __init__(self, code_string, filename="<string>"):
         self.code_string = code_string
         self.filename = filename
@@ -49,12 +50,12 @@ class ExecutionTracer:
 
     def trace_execution(self):
         try:
-            compiled_code = compile(self.code_string, self.filename, 'exec')
+            compiled_code = compile(self.code_string, self.filename, "exec")
         except SyntaxError:
             return []
 
         def trace_func(frame, event, arg):
-            if event == 'line':
+            if event == "line":
                 self.execution_order.append(frame.f_lineno)
             return trace_func
 
@@ -72,6 +73,7 @@ class ExecutionTracer:
 
 class ASTExecutionSimulator:
     """Simulate Python code execution based on AST analysis"""
+
     def __init__(self, ast_tree, code_lines):
         self.ast_tree = ast_tree
         self.code_lines = code_lines
@@ -87,7 +89,7 @@ class ASTExecutionSimulator:
             self._visit_statement(stmt, max_iterations)
 
     def _visit_statement(self, node, max_iterations):
-        if not hasattr(node, 'lineno'):
+        if not hasattr(node, "lineno"):
             return
 
         if isinstance(node, ast.FunctionDef):
@@ -103,7 +105,9 @@ class ASTExecutionSimulator:
             self.execution_order.append(node.lineno)
             self._visit_block(node.body, max_iterations)
             if node.orelse:
-                if isinstance(node.orelse[0], ast.If) and hasattr(node.orelse[0], 'lineno'):
+                if isinstance(node.orelse[0], ast.If) and hasattr(
+                    node.orelse[0], "lineno"
+                ):
                     self._visit_statement(node.orelse[0], max_iterations)
                 else:
                     self._visit_block(node.orelse, max_iterations)
@@ -136,7 +140,7 @@ class ASTExecutionSimulator:
             self.execution_order.append(node.lineno)
             self._visit_block(node.body, max_iterations)
             for handler in node.handlers:
-                if hasattr(handler, 'lineno'):
+                if hasattr(handler, "lineno"):
                     self.execution_order.append(handler.lineno)
                 self._visit_block(handler.body, max_iterations)
             if node.orelse:
@@ -145,10 +149,26 @@ class ASTExecutionSimulator:
                 self._visit_block(node.finalbody, max_iterations)
 
         else:
-            if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign,
-                                  ast.Expr, ast.Return, ast.Raise, ast.Assert,
-                                  ast.Delete, ast.Pass, ast.Break, ast.Continue,
-                                  ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)):
+            if isinstance(
+                node,
+                (
+                    ast.Assign,
+                    ast.AugAssign,
+                    ast.AnnAssign,
+                    ast.Expr,
+                    ast.Return,
+                    ast.Raise,
+                    ast.Assert,
+                    ast.Delete,
+                    ast.Pass,
+                    ast.Break,
+                    ast.Continue,
+                    ast.Import,
+                    ast.ImportFrom,
+                    ast.Global,
+                    ast.Nonlocal,
+                ),
+            ):
                 self.execution_order.append(node.lineno)
 
 
@@ -160,7 +180,7 @@ class PythonCode(VGroup):
         font: str = None,
         language: str = "python",
         code_style: str = "monokai",
-        lsh: float = 1.0,
+        lsh: int | None = None,
         **kwargs,
     ):
         super().__init__()
@@ -171,27 +191,34 @@ class PythonCode(VGroup):
             self.code_string = f.read()
         self.filename = filename
 
-        raw_lines = self.code_string.split("\n")
-        if raw_lines and raw_lines[-1] == "":
-            raw_lines = raw_lines[:-1]
+        trailing_blank = len(self.code_string) - len(self.code_string.rstrip("\n"))
 
-        self._code_lines = VGroup(*[
-            Code(
-                line if line.strip() else " ",
-                font=font,
-                font_size=font_size,
-                language=language,
-                code_style=code_style,
-                lsh=lsh,
-            )
-            for line in raw_lines
-        ]).arrange(DOWN, buff=0.05, aligned_edge=LEFT)
+        if trailing_blank > 0:
+            padded_string = self.code_string.rstrip("\n") + ("\nd" * trailing_blank)
+        else:
+            padded_string = self.code_string
 
-        self._frame = SurroundingRectangle(
-            self._code_lines, buff=0.3, stroke_width=0, fill_color=GREY_E, fill_opacity=0.3
+        self._code = Code(
+            padded_string,
+            font=font,
+            font_size=font_size,
+            language=language,
+            code_style=code_style,
+            lsh=lsh,
         )
 
-        self.add(self._frame, self._code_lines)
+        self._frame = SurroundingRectangle(
+            self._code,
+            buff=0.3,
+            stroke_width=kwargs.get("stroke_width", 0),
+            fill_color=GREY_E,
+            fill_opacity=0.3,
+        )
+
+        for _ in range(trailing_blank):
+            self._code.remove(self._code[-1])
+
+        self.add(self._frame, self._code)
 
         try:
             self.ast_tree = ast.parse(self.code_string, filename=filename)
@@ -205,22 +232,54 @@ class PythonCode(VGroup):
 
     @property
     def code(self):
-        return self._code_lines
+        return self.get_lines()
 
     @property
     def script(self):
-        return self._code_lines
+        return self.get_lines()
+
+    def get_lines(self):
+        whitespaces = "\t "
+        text_shrinked = self.code_string
+        for ws in whitespaces:
+            text_shrinked = text_shrinked.replace(ws, "")
+        line_ranges: list[tuple[int, int]] = []
+        start_idx = 0
+        code_idx = 0
+        for c in text_shrinked:
+            if c == "\n":
+                line_ranges.append((start_idx, code_idx))
+                start_idx = code_idx
+            else:
+                code_idx += 1
+        line_ranges.append((start_idx, code_idx))
+
+        lines = VGroup()
+        for start, end in line_ranges:
+            line_mob = self._code[start:end]
+            lines.add(line_mob)
+        return lines
+
+
 
     def find_text(self, line_no: int, text: str, nth: int = 1):
         lines = self.code_string.split("\n")
         line = lines[line_no - 1]
+        whitespaces = "\t "
+        line_shrinked = line
+        text_shrinked = text
+        for ws in whitespaces:
+            line_shrinked = line_shrinked.replace(ws, "")
+            text_shrinked = text_shrinked.replace(ws, "")
         try:
-            idx = _find_multiple(line, text)[nth - 1]
+            idx = _find_multiple(line_shrinked, text_shrinked)[nth - 1]
         except IndexError:
             raise IndexError(f"Cannot find {nth}th '{text}' at line {line_no}: {line}")
-        return idx, idx + len(text)
+        return idx, idx + len(text_shrinked)
 
-    def text_slice(self, line_no: int, text: str, nth: int = 1, exclusive=False) -> Mobject:
+    def text_slice(
+        self, line_no: int, text: str, nth: int = 1, exclusive=False
+    ) -> Mobject:
         idx_start, idx_end = self.find_text(line_no, text, nth)
         if exclusive:
             return VGroup(
@@ -229,8 +288,15 @@ class PythonCode(VGroup):
             )
         return self.code[line_no - 1][idx_start:idx_end]
 
-    def highlight(self, line_no: int, text: str = None, nth: int = 1,
-                  anim=Write, color="#FFFF00", anim_out=FadeOut):
+    def highlight(
+        self,
+        line_no: int,
+        text: str = None,
+        nth: int = 1,
+        anim=Write,
+        color="#FFFF00",
+        anim_out=FadeOut,
+    ):
         if text is None:
             target = self.code[line_no - 1].copy().set_color(color)
         else:
@@ -259,7 +325,12 @@ class PythonCode(VGroup):
         anims = []
         for line in lines:
             box = SurroundingRectangle(
-                self.code[line - 1], buff=0.1, stroke_width=0, color=GREEN, fill_color=GREEN, fill_opacity=0.8
+                self.code[line - 1],
+                buff=0.1,
+                stroke_width=0,
+                color=GREEN,
+                fill_color=GREEN,
+                fill_opacity=0.8,
             ).set_z_index(1)
             if with_line_no:
                 anims.append((FadeOut(box), line))
@@ -272,7 +343,7 @@ class PythonCode(VGroup):
         if len(line) == 1:
             return self.code[line[0] - 1 * is_negative(line[0])]
         elif len(line) == 2:
-            return self.code[line[0] - 1 * is_negative(line[0]):line[1]]
+            return self.code[line[0] - 1 * is_negative(line[0]) : line[1]]
         else:
             raise ValueError(
                 f"The number of argument line should be 1 or 2, but {len(line)} given"
