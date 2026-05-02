@@ -186,6 +186,8 @@ class PythonCode(VGroup):
         super().__init__()
         if font is None:
             font = MONO_FONT
+        if lsh is None:
+            lsh = 1.25
 
         with open(filename, "r") as f:
             self.code_string = f.read()
