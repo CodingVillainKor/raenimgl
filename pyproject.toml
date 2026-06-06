@@ -13,3 +13,6 @@ dependencies = [
 
 [tool.setuptools]
 packages = ["raenimgl"]
+
+[tool.setuptools.package-data]
+raenimgl = ["assets/*"]
