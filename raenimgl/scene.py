@@ -63,7 +63,7 @@ class RaenimScene:
     @property
     def mouse(self):
         if getattr(self, "_mouse", None) is None:
-            self._mouse = Mouse()
+            self._mouse = Mouse().scale(0.75)
         return self._mouse
 
     @property
