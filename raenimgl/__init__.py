@@ -1,5 +1,6 @@
 from .constant import *
 from .filesystem import *
+from .functions import *
 from .mobject import *
 from .nn import *
 from .scene import *
