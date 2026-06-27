@@ -65,19 +65,30 @@ class RNN(VGroup):
         super().__init__()
 
 class Tensor(VGroup):
-    def __init__(self, dim: int, shape="circle", arrange=DOWN, buff=MED_SMALL_BUFF*0.4):
+    def __init__(self, dim: int, shape="square", arrange=DOWN, buff=MED_SMALL_BUFF*0.4, ellipsis=False):
         super().__init__()
         if shape == "circle":
             fig = lambda: Circle(radius=0.2, stroke_width=DEFAULT_STROKE_WIDTH*0.4, color=GREY)
         elif shape == "square":
             fig = lambda: Square(side_length=0.4, stroke_width=DEFAULT_STROKE_WIDTH*0.4, color=GREY)
         self.add(*[fig().set_fill(color=random_color(), opacity=1) for i in range(dim)]).arrange(arrange, buff=buff)
-    
+        self.ellipsis_idx = dim // 2 if ellipsis else None
+        if ellipsis:
+            dots = Text("...", font_size=32, font=MONO_FONT).set_color(GREY_C)
+            # vertical ellipsis when the tensor is stacked along the y-axis
+            if abs(arrange[1]) > abs(arrange[0]):
+                dots.rotate(PI / 2)
+            self[self.ellipsis_idx].become(dots.move_to(self[self.ellipsis_idx]))
+
     def to_numbers(self, numbers=None, font_size=18):
         if numbers is None:
             numbers = np.random.randn(len(self))
         assert len(numbers) == len(self)
-        nums = VGroup(*[Text(f"{n:.1f}" if n < 0 else f"+{n:.1f}", font_size=font_size, font=MONO_FONT).move_to(self[i]) for i, n in enumerate(numbers)])
+        nums = VGroup(*[
+            self[i].copy() if i == self.ellipsis_idx
+            else Text(f"{n:.1f}" if n < 0 else f"+{n:.1f}", font_size=font_size, font=MONO_FONT).move_to(self[i])
+            for i, n in enumerate(numbers)
+        ])
         return Transform(self, nums)
 
 def propagation(mlp, indices, scene_instance=None, run_time=0.3):
