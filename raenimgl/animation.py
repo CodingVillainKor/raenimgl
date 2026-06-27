@@ -310,3 +310,6 @@ class Marking(AnimationGroup):
 class Create(ShowCreation):
     def __init__(self, mobject: Mobject, **kwargs):
         super().__init__(mobject, **kwargs)
+
+class Circumscribe(FlashAround):
+    pass
