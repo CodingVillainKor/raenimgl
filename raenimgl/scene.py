@@ -109,10 +109,6 @@ class Scene2D(Scene, RaenimScene):
         self._reset_fast_forward()
         super().setup()
 
-    def embed(self, *args, **kwargs):
-        self._reached_embed = True
-        super().embed(*args, **kwargs)
-
     def play(self, *args, **kwargs):
         if self._fast_forward():
             kwargs["run_time"] = 0.1
@@ -143,10 +139,6 @@ class Scene3D(ThreeDScene, RaenimScene):
     def setup(self):
         self._reset_fast_forward()
         super().setup()
-
-    def embed(self, *args, **kwargs):
-        self._reached_embed = True
-        super().embed(*args, **kwargs)
 
     def play(self, *args, **kwargs):
         if self._fast_forward():
@@ -182,3 +174,26 @@ class Scene3D(ThreeDScene, RaenimScene):
     @property
     def cf(self) -> VMobject:
         return self.frame
+
+
+# Mark a RaenimScene as "reached embed" once the interactive shell launches, so
+# that blocks run manually from the embed session (checkpoint_paste / ctrl+q)
+# play at their normal speed, while everything before self.embed() fast-forwards.
+#
+# This patches InteractiveSceneEmbed.launch() rather than overriding
+# Scene.embed(): manimlib finds the caller of self.embed() with a hardcoded
+# f_back.f_back.f_back in get_ipython_shell_for_embedded_scene(), so inserting an
+# extra frame into the embed() call chain makes it load the wrong module. launch()
+# runs after that frame-sensitive setup, so wrapping it is safe.
+from manimlib.scene.scene_embed import InteractiveSceneEmbed as _ISE
+
+if not getattr(_ISE.launch, "_raenim_marks_embed", False):
+    _raenim_orig_launch = _ISE.launch
+
+    def _raenim_launch(self):
+        if isinstance(self.scene, RaenimScene):
+            self.scene._reached_embed = True
+        _raenim_orig_launch(self)
+
+    _raenim_launch._raenim_marks_embed = True
+    _ISE.launch = _raenim_launch
