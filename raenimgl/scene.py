@@ -4,6 +4,7 @@ from addict import Dict
 from types import GeneratorType
 
 from .mobject import Mouse, Overlay
+from .utils import interactive
 
 __all__ = ["Scene2D", "Scene3D"]
 
@@ -11,9 +12,23 @@ __all__ = ["Scene2D", "Scene3D"]
 class RaenimScene:
     """Base class for common functionality shared between Scene2D and Scene3D"""
 
+    def _reset_fast_forward(self):
+        # Called from setup() on every run/reload, before construct(), so each
+        # (re)run starts by fast-forwarding again until embed() is reached.
+        self._reached_embed = False
+
+    def _fast_forward(self) -> bool:
+        # Speed up play() only while racing through construct() to reach
+        # self.embed(). Once embed() is reached, manually-run blocks (e.g. via
+        # checkpoint_paste / ctrl+q) play at their normal speed.
+        return interactive() and not getattr(self, "_reached_embed", False)
+
     def playw(self, *args, wait=1, **kwargs):
         if len(args) == 1 and isinstance(args[0], GeneratorType):
             args = list(args[0])
+        if self._fast_forward():
+            wait = 0
+            kwargs["run_time"] = 0.1
         self.play(*args, **kwargs)
         if wait > 0:
             self.wait(wait)
@@ -90,6 +105,19 @@ class Scene2D(Scene, RaenimScene):
     def construct(self):
         pass
 
+    def setup(self):
+        self._reset_fast_forward()
+        super().setup()
+
+    def embed(self, *args, **kwargs):
+        self._reached_embed = True
+        super().embed(*args, **kwargs)
+
+    def play(self, *args, **kwargs):
+        if self._fast_forward():
+            kwargs["run_time"] = 0.1
+        super().play(*args, **kwargs)
+
     def point_mouse_to(
         self,
         point: Mobject | np.ndarray,
@@ -111,7 +139,19 @@ class Scene3D(ThreeDScene, RaenimScene):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.frame.reorient(0,0,0,0)
-        
+
+    def setup(self):
+        self._reset_fast_forward()
+        super().setup()
+
+    def embed(self, *args, **kwargs):
+        self._reached_embed = True
+        super().embed(*args, **kwargs)
+
+    def play(self, *args, **kwargs):
+        if self._fast_forward():
+            kwargs["run_time"] = 0.1
+        super().play(*args, **kwargs)
 
     def construct(self):
         pass
