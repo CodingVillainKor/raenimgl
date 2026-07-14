@@ -35,6 +35,8 @@ class RaenimScene:
 
     def addw(self, *args, wait=1, **kwargs):
         self.add(*args, **kwargs)
+        if self._fast_forward():
+            wait = 0
         if wait > 0:
             self.wait(wait)
 
