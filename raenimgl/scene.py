@@ -25,6 +25,12 @@ class RaenimScene:
         # Speed up play() only while racing through construct() to reach
         # self.embed(). Once embed() is reached, manually-run blocks (e.g. via
         # checkpoint_paste / ctrl+q) play at their normal speed.
+        if not hasattr(self, "_normal_speed"):
+            # setup() may not have run _reset_fast_forward(): e.g. in
+            # `class S(InteractiveScene, Scene2D)`, InteractiveScene.setup()
+            # doesn't call super().setup(). A new scene is created on every
+            # reload, so this still consumes the request once per run.
+            self._normal_speed = _pop_normal_speed_request()
         return (
             interactive()
             and not getattr(self, "_reached_embed", False)
