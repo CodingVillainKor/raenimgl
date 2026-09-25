@@ -376,7 +376,11 @@ class rCode(VGroup):
     non-whitespace character (whitespace produces no glyph, so it is skipped).
     Line numbers are 0-indexed everywhere in this class.
 
+    Any pygments language works. ``language`` defaults to the one inferred from
+    ``filename``'s extension, else "python".
+
         rc = rCode(filename="foo.py")
+        rc = rCode('{"a": 1}', language="json")
         rc.ls[0]            # first line
         rc.ls[0][:3]        # first 3 non-whitespace chars of the first line
         rc.text_slice(2, "return")
@@ -388,7 +392,7 @@ class rCode(VGroup):
         filename: str | None = None,
         font_size: int = 24,
         font: str = None,
-        language: str = "python",
+        language: str | None = None,
         code_style: str = "monokai",
         lsh: float = 1.25,
         frame_buff: float = 0.3,
@@ -402,9 +406,12 @@ class rCode(VGroup):
         if filename is not None:
             with open(filename, "r", encoding="utf-8") as f:
                 code = f.read()
+        if language is None:
+            language = _guess_language(filename)
         self.code_string = code
         self.filename = filename
         self.font = font
+        self.language = language
 
         # Code drops trailing blank lines, so pad them with a dummy glyph to keep
         # the block height, then remove the padding glyphs.
@@ -539,6 +546,18 @@ class rCode(VGroup):
         raise ValueError(
             f"The number of argument line should be 1 or 2, but {len(line)} given"
         )
+
+
+def _guess_language(filename: str | None) -> str:
+    if filename is None:
+        return "python"
+    import pygments.lexers
+    import pygments.util
+
+    try:
+        return pygments.lexers.get_lexer_for_filename(filename).aliases[0]
+    except pygments.util.ClassNotFound:
+        return "text"
 
 
 def _strip_whitespace(string: str) -> str:
