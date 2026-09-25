@@ -14,14 +14,22 @@ class RaenimScene:
 
     def _reset_fast_forward(self):
         # Called from setup() on every run/reload, before construct(), so each
-        # (re)run starts by fast-forwarding again until embed() is reached.
+        # (re)run starts by fast-forwarding again until embed() is reached,
+        # unless request_normal_speed_reload() asked for this one run to play
+        # at normal speed. The request is consumed here, so later reloads
+        # fast-forward again.
         self._reached_embed = False
+        self._normal_speed = _pop_normal_speed_request()
 
     def _fast_forward(self) -> bool:
         # Speed up play() only while racing through construct() to reach
         # self.embed(). Once embed() is reached, manually-run blocks (e.g. via
         # checkpoint_paste / ctrl+q) play at their normal speed.
-        return interactive() and not getattr(self, "_reached_embed", False)
+        return (
+            interactive()
+            and not getattr(self, "_reached_embed", False)
+            and not getattr(self, "_normal_speed", False)
+        )
 
     def playw(self, *args, wait=1, **kwargs):
         if len(args) == 1 and isinstance(args[0], GeneratorType):
@@ -199,3 +207,30 @@ if not getattr(_ISE.launch, "_raenim_marks_embed", False):
 
     _raenim_launch._raenim_marks_embed = True
     _ISE.launch = _raenim_launch
+
+
+# `request_normal_speed_reload(); reload()` in the embed shell replays the whole
+# construct() at normal speed instead of fast-forwarding to self.embed().
+# The request lives on manim_config.run because reload() re-creates the scene
+# (and may re-import this module), while manim_config survives the reload.
+def request_normal_speed_reload():
+    manim_config.run.raenim_normal_speed = True
+    print("Next reload() plays at normal speed.")
+
+
+def _pop_normal_speed_request() -> bool:
+    requested = bool(manim_config.run.get("raenim_normal_speed", False))
+    manim_config.run.raenim_normal_speed = False
+    return requested
+
+
+if not getattr(_ISE.get_shortcuts, "_raenim_normal_speed", False):
+    _raenim_orig_get_shortcuts = _ISE.get_shortcuts
+
+    def _raenim_get_shortcuts(self):
+        shortcuts = _raenim_orig_get_shortcuts(self)
+        shortcuts["request_normal_speed_reload"] = request_normal_speed_reload
+        return shortcuts
+
+    _raenim_get_shortcuts._raenim_normal_speed = True
+    _ISE.get_shortcuts = _raenim_get_shortcuts
