@@ -437,27 +437,47 @@ class rCode(VGroup):
             fill_opacity=0.3,
         )
         self.add(self._frame, self._code)
+        self._char_spans = self._compute_char_spans()
         self._ls = self._build_lines()
 
-    def _build_lines(self) -> VGroup:
-        glyphs = self._code.submobjects
-        lines = VGroup()
+    def _compute_char_spans(self) -> list[list[tuple[int, int]]]:
+        """Glyph index range of each non-whitespace char, per line."""
+        spans = []
         idx = 0
         for line in self.lines_string:
-            chars = VGroup()
+            line_spans = []
             for c in line:
                 if c.isspace():
                     continue
                 n = _glyph_count(c, self.font)
-                chars.add(VGroup(*glyphs[idx : idx + n]))
+                line_spans.append((idx, idx + n))
                 idx += n
-            lines.add(chars)
-        if idx != len(glyphs):
+            spans.append(line_spans)
+        n_glyphs = len(self._code.submobjects)
+        if idx != n_glyphs:
             log.warning(
-                f"rCode: counted {idx} glyphs but Code rendered {len(glyphs)}; "
+                f"rCode: counted {idx} glyphs but Code rendered {n_glyphs}; "
                 "line/char indexing may be off"
             )
-        return lines
+        return spans
+
+    def _build_lines(self) -> VGroup:
+        glyphs = self._code.submobjects
+        return VGroup(
+            *(
+                VGroup(*(VGroup(*glyphs[start:end]) for start, end in line_spans))
+                for line_spans in self._char_spans
+            )
+        )
+
+    def copy(self, deep: bool = False) -> "rCode":
+        # _ls groups the glyphs of _code but isn't part of the family, so
+        # Mobject.copy() would leave the copy's _ls pointing at the original's
+        # glyphs (e.g. `rc.target.ls[2].shift(UP)` would move rc itself).
+        # Rebuild it from the copy's own glyphs.
+        result = super().copy(deep=deep)
+        result._ls = result._build_lines()
+        return result
 
     @property
     def ls(self) -> VGroup:
