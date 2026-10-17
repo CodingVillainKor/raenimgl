@@ -67,18 +67,26 @@ class RNN(VGroup):
 class Tensor(VGroup):
     def __init__(self, dim: int, shape="square", arrange=DOWN, buff=MED_SMALL_BUFF*0.4, ellipsis=False):
         super().__init__()
+        vertical = abs(arrange[1]) > abs(arrange[0])
         if shape == "circle":
             fig = lambda: Circle(radius=0.2, stroke_width=DEFAULT_STROKE_WIDTH*0.4, color=GREY)
         elif shape == "square":
             fig = lambda: Square(side_length=0.4, stroke_width=DEFAULT_STROKE_WIDTH*0.4, color=GREY)
+        elif shape == "rectangle":
+            # short along the arrange direction
+            w, h = (0.4, 0.12) if vertical else (0.12, 0.4)
+            fig = lambda: Rectangle(width=w, height=h, stroke_width=DEFAULT_STROKE_WIDTH*0.4, color=GREY)
         self.add(*[fig().set_fill(color=random_color(), opacity=1) for i in range(dim)]).arrange(arrange, buff=buff)
         self.ellipsis_idx = dim // 2 if ellipsis else None
         if ellipsis:
             dots = Text("...", font_size=32, font=MONO_FONT).set_color(GREY_C)
             # vertical ellipsis when the tensor is stacked along the y-axis
-            if abs(arrange[1]) > abs(arrange[0]):
+            if vertical:
                 dots.rotate(PI / 2)
             self[self.ellipsis_idx].become(dots.move_to(self[self.ellipsis_idx]))
+            # dots are wider than a rectangle's short side, so re-space around them
+            if shape == "rectangle":
+                self.arrange(arrange, buff=buff)
 
     def to_numbers(self, numbers=None, font_size=18):
         if numbers is None:
