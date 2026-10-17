@@ -1,7 +1,7 @@
 import math
 import random
 
-__all__ = ["PEACH", "COBALT", "random_colors"]
+__all__ = ["PEACH", "COBALT", "raenim_colors"]
 
 PEACH = "#FDD4BD"
 COBALT = "#006EB8"
@@ -57,7 +57,7 @@ def _oklch_to_hex(L, C, h):
 _POLES = (_hex_to_oklch(PEACH), _hex_to_oklch(COBALT))
 
 
-def random_colors(nums: int, hue_spread: float = 45) -> list[str]:
+def raenim_colors(nums: int, hue_spread: float = 45) -> list[str]:
     """
     PEACH와 COBALT를 두 극으로 번갈아 오가는 nums개의 색.
     톤(명도·채도)은 각 극을 따르고 색상각만 ±hue_spread 안에서 흔든다.
