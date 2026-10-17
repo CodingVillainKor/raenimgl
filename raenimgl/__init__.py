@@ -1,4 +1,5 @@
 from .constant import *
+from .colors import *
 from .filesystem import *
 from .functions import *
 from .mobject import *
