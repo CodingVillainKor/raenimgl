@@ -22,8 +22,11 @@ class LiveSound:
     it, so sounds that were still going at that point pick up from the same
     spot when the block runs again.
 
-    Sounds added while fast-forwarding to self.embed() aren't logged, since
-    their scene time is squeezed and wouldn't match the render.
+    Times are kept on the render clock: while fast-forwarding to self.embed(),
+    play()/playw() only take 0.1s each, and the time they'd have taken in the
+    render is added up in _ff_lag. Sounds stay silent through the fast-forward,
+    and a block run after embed() hears them from where the render would be,
+    e.g. a narration added at the top of construct().
 
     Comes before Scene in the bases: in `class S(InteractiveScene, Scene2D)`
     the MRO puts RaenimScene after Scene, where these overrides would be hidden.
@@ -32,25 +35,35 @@ class LiveSound:
     def __init__(self, *args, **kwargs):
         # reload() builds a new scene; the old one's sounds shouldn't play on
         stop_sounds()
-        self._sounds = []       # (start, path, gain), start in scene time
+        self._sounds = []       # (start, path, gain), start on the render clock
         self._sound_queue = []  # logged sounds not yet started in the window
+        self._ff_lag = 0.0      # render time the fast-forward squeezed out
         super().__init__(*args, **kwargs)
+
+    def render_time(self):
+        """Scene time as it would be in the render, fast-forward undone."""
+        return self.get_time() + self._ff_lag
 
     def add_sound(self, sound_file, time_offset=0, gain=None, gain_to_background=None):
         super().add_sound(sound_file, time_offset, gain, gain_to_background)
-        if self.window is None or self._fast_forward():
+        if self.window is None:
             return
-        sound = (self.get_time() + time_offset, get_full_sound_file_path(sound_file), gain)
+        sound = (self.render_time() + time_offset, get_full_sound_file_path(sound_file), gain)
         self._sounds.append(sound)
         self._sound_queue.append(sound)
 
     def pre_play(self):
         super().pre_play()
-        # Queued sounds wait out skipped blocks, then start partway in if
-        # they began while skipping
-        if self.window is None or self.skip_animations or not self._sound_queue:
+        # Queued sounds wait out skipped blocks and the fast-forward, then
+        # start partway in if they began meanwhile
+        if (
+            self.window is None
+            or self.skip_animations
+            or self._fast_forward()
+            or not self._sound_queue
+        ):
             return
-        now = self.get_time()
+        now = self.render_time()
         for start, path, gain in self._sound_queue:
             duration = sound_duration(path)
             if duration is not None and start + duration <= now:
@@ -58,10 +71,36 @@ class LiveSound:
             play_sound_live(path, delay=max(start - now, 0), offset=max(now - start, 0), gain=gain)
         self._sound_queue = []
 
-    def rewind_sounds(self, sounds):
+    def rewind_sounds(self, sounds, ff_lag=None):
         stop_sounds()
         self._sounds = list(sounds)
         self._sound_queue = list(sounds)
+        if ff_lag is not None:
+            self._ff_lag = ff_lag
+
+    def pause_sounds(self):
+        # Scene time stops when a block run from the shell ends, so the sound
+        # does too; the next play()/wait() picks up whatever is still going
+        self.rewind_sounds(self._sounds)
+
+    def _play_fast_forward(self, play, args, kwargs):
+        # Race through in 0.1s, but count the time the animations would have
+        # taken toward the render clock, the same way Scene.play() works it out
+        animations = [prepare_animation(anim) for anim in args]
+        for anim in animations:
+            anim.update_rate_info(kwargs.get("run_time"), kwargs.get("rate_func"), kwargs.get("lag_ratio"))
+        run_time = max((anim.get_run_time() for anim in animations), default=0)
+        start = self.get_time()
+        play(*animations, **{**kwargs, "run_time": 0.1})
+        self._ff_lag += run_time - (self.get_time() - start)
+
+    def tear_down(self):
+        # Cut the movie's audio where the last frame ends, rather than let a
+        # long sound run on past it
+        writer = self.file_writer
+        if writer.includes_sound:
+            writer.audio_segment = writer.audio_segment[:int(1000 * self.get_time())]
+        super().tear_down()
 
 
 class RaenimScene:
@@ -95,9 +134,10 @@ class RaenimScene:
     def playw(self, *args, wait=1, **kwargs):
         if len(args) == 1 and isinstance(args[0], GeneratorType):
             args = list(args[0])
+        # play() itself squeezes run_time while fast-forwarding
         if self._fast_forward():
+            self._ff_lag += max(wait, 0)
             wait = 0
-            kwargs["run_time"] = 0.1
         self.play(*args, **kwargs)
         if wait > 0:
             self.wait(wait)
@@ -105,6 +145,7 @@ class RaenimScene:
     def addw(self, *args, wait=1, **kwargs):
         self.add(*args, **kwargs)
         if self._fast_forward():
+            self._ff_lag += max(wait, 0)
             wait = 0
         if wait > 0:
             self.wait(wait)
@@ -182,8 +223,9 @@ class Scene2D(LiveSound, Scene, RaenimScene):
 
     def play(self, *args, **kwargs):
         if self._fast_forward():
-            kwargs["run_time"] = 0.1
-        super().play(*args, **kwargs)
+            self._play_fast_forward(super().play, args, kwargs)
+        else:
+            super().play(*args, **kwargs)
 
     def point_mouse_to(
         self,
@@ -213,8 +255,9 @@ class Scene3D(LiveSound, ThreeDScene, RaenimScene):
 
     def play(self, *args, **kwargs):
         if self._fast_forward():
-            kwargs["run_time"] = 0.1
-        super().play(*args, **kwargs)
+            self._play_fast_forward(super().play, args, kwargs)
+        else:
+            super().play(*args, **kwargs)
 
     def construct(self):
         pass
@@ -262,8 +305,12 @@ if not getattr(_ISE.launch, "_raenim_marks_embed", False):
     _raenim_orig_launch = _ISE.launch
 
     def _raenim_launch(self):
-        if isinstance(self.scene, RaenimScene):
-            self.scene._reached_embed = True
+        scene = self.scene
+        if isinstance(scene, RaenimScene):
+            scene._reached_embed = True
+        if isinstance(scene, LiveSound):
+            scene.pause_sounds()
+            self.shell.events.register("post_run_cell", lambda *args: scene.pause_sounds())
         _raenim_orig_launch(self)
 
     _raenim_launch._raenim_marks_embed = True
@@ -309,11 +356,12 @@ if not getattr(_SceneState.restore_scene, "_raenim_sounds", False):
     def _raenim_state_init(self, scene, *args, **kwargs):
         _raenim_orig_state_init(self, scene, *args, **kwargs)
         self.sounds = list(getattr(scene, "_sounds", ()))
+        self.ff_lag = getattr(scene, "_ff_lag", 0.0)
 
     def _raenim_restore_scene(self, scene):
         _raenim_orig_restore_scene(self, scene)
         if isinstance(scene, LiveSound) and hasattr(self, "sounds"):
-            scene.rewind_sounds(self.sounds)
+            scene.rewind_sounds(self.sounds, self.ff_lag)
 
     _raenim_restore_scene._raenim_sounds = True
     _SceneState.__init__ = _raenim_state_init
