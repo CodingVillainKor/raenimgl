@@ -3,10 +3,65 @@ from functools import wraps
 from addict import Dict
 from types import GeneratorType
 
+from manimlib.utils.sounds import get_full_sound_file_path
+
 from .mobject import Mouse, Overlay
-from .utils import interactive
+from .utils import interactive, play_sound_live, sound_duration, stop_sounds
 
 __all__ = ["Scene2D", "Scene3D"]
+
+
+class LiveSound:
+    """Hear add_sound() in the interactive window, not only in a -w render.
+
+    manimgl only mixes add_sound() into the movie file. Here each sound is also
+    logged at the scene time it starts, and played through ffplay once the next
+    play()/wait() begins, so it lines up with the animations as in the render.
+    Restoring a scene state (checkpoint_paste on a block whose leading comment
+    was seen before, or undo/redo) cuts what's playing and rewinds the log with
+    it, so sounds that were still going at that point pick up from the same
+    spot when the block runs again.
+
+    Sounds added while fast-forwarding to self.embed() aren't logged, since
+    their scene time is squeezed and wouldn't match the render.
+
+    Comes before Scene in the bases: in `class S(InteractiveScene, Scene2D)`
+    the MRO puts RaenimScene after Scene, where these overrides would be hidden.
+    """
+
+    def __init__(self, *args, **kwargs):
+        # reload() builds a new scene; the old one's sounds shouldn't play on
+        stop_sounds()
+        self._sounds = []       # (start, path, gain), start in scene time
+        self._sound_queue = []  # logged sounds not yet started in the window
+        super().__init__(*args, **kwargs)
+
+    def add_sound(self, sound_file, time_offset=0, gain=None, gain_to_background=None):
+        super().add_sound(sound_file, time_offset, gain, gain_to_background)
+        if self.window is None or self._fast_forward():
+            return
+        sound = (self.get_time() + time_offset, get_full_sound_file_path(sound_file), gain)
+        self._sounds.append(sound)
+        self._sound_queue.append(sound)
+
+    def pre_play(self):
+        super().pre_play()
+        # Queued sounds wait out skipped blocks, then start partway in if
+        # they began while skipping
+        if self.window is None or self.skip_animations or not self._sound_queue:
+            return
+        now = self.get_time()
+        for start, path, gain in self._sound_queue:
+            duration = sound_duration(path)
+            if duration is not None and start + duration <= now:
+                continue
+            play_sound_live(path, delay=max(start - now, 0), offset=max(now - start, 0), gain=gain)
+        self._sound_queue = []
+
+    def rewind_sounds(self, sounds):
+        stop_sounds()
+        self._sounds = list(sounds)
+        self._sound_queue = list(sounds)
 
 
 class RaenimScene:
@@ -117,7 +172,7 @@ class RaenimScene:
 
 
 
-class Scene2D(Scene, RaenimScene):
+class Scene2D(LiveSound, Scene, RaenimScene):
     def construct(self):
         pass
 
@@ -147,7 +202,7 @@ class Scene2D(Scene, RaenimScene):
         return self.frame
 
 
-class Scene3D(ThreeDScene, RaenimScene):
+class Scene3D(LiveSound, ThreeDScene, RaenimScene):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.frame.reorient(0,0,0,0)
@@ -240,3 +295,26 @@ if not getattr(_ISE.get_shortcuts, "_raenim_normal_speed", False):
 
     _raenim_get_shortcuts._raenim_normal_speed = True
     _ISE.get_shortcuts = _raenim_get_shortcuts
+
+
+# Carry the sound log in every SceneState, so restoring one (checkpoint_paste,
+# undo/redo) rewinds the sounds with the mobjects. Patched on SceneState itself
+# because InteractiveScene.get_state() builds one without calling super().
+from manimlib.scene.scene import SceneState as _SceneState
+
+if not getattr(_SceneState.restore_scene, "_raenim_sounds", False):
+    _raenim_orig_state_init = _SceneState.__init__
+    _raenim_orig_restore_scene = _SceneState.restore_scene
+
+    def _raenim_state_init(self, scene, *args, **kwargs):
+        _raenim_orig_state_init(self, scene, *args, **kwargs)
+        self.sounds = list(getattr(scene, "_sounds", ()))
+
+    def _raenim_restore_scene(self, scene):
+        _raenim_orig_restore_scene(self, scene)
+        if isinstance(scene, LiveSound) and hasattr(self, "sounds"):
+            scene.rewind_sounds(self.sounds)
+
+    _raenim_restore_scene._raenim_sounds = True
+    _SceneState.__init__ = _raenim_state_init
+    _SceneState.restore_scene = _raenim_restore_scene

@@ -8,7 +8,7 @@ from .scene import *
 from .script import *
 from .text import *
 from .animation import *
-from .utils import MONO_FONT, MOCK, interactive
+from .utils import MONO_FONT, MOCK, interactive, stop_sounds
 from .matrix import *
 from .git import *
 from .coordinates import *
