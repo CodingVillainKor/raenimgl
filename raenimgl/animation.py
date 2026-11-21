@@ -2,6 +2,7 @@ from manimlib import *
 import random as _random_module
 from manimlib.mobject.mobject import _AnimationBuilder
 from perlin_noise import PerlinNoise as _PerlinNoise
+from .mobject import BrokenLine
 
 # Monkey-patch _AnimationBuilder to record method calls for deferred replay.
 # This allows SkewedAnimations to regenerate targets from the mobject's current
@@ -313,3 +314,33 @@ class Create(ShowCreation):
 
 class Circumscribe(FlashAround):
     pass
+
+class FlashPath(VShowPassingFlash):
+    """A glowing stroke that travels once along a path through `points`,
+    from the first point to the last.
+
+    Two points give a straight Line; three or more give a BrokenLine
+    (smoothed through the points when smooth=True). `smooth` is ignored
+    for two points.
+    """
+    def __init__(
+        self,
+        *points,
+        smooth: bool = False,
+        time_width: float = 1.0,
+        taper_width: float = 0.0,
+        stroke_width: float = 4.0,
+        color=YELLOW,
+        n_inserted_curves: int = 100,
+        **kwargs,
+    ):
+        if len(points) < 2:
+            raise ValueError(f"FlashPath needs at least two points, got {len(points)}.")
+        if len(points) == 2:
+            path = Line(points[0], points[1])
+        else:
+            path = BrokenLine(*points, smooth=smooth)
+        path.insert_n_curves(n_inserted_curves)
+        path.set_points(path.get_points_without_null_curves())
+        path.set_stroke(color, stroke_width)
+        super().__init__(path, time_width=time_width, taper_width=taper_width, **kwargs)
